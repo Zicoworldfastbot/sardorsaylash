@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Saylov arizasi</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#ffffff);
+  --fg:var(--tg-theme-text-color,#0f172a);
+  --hint:var(--tg-theme-hint-color,#64748b);
+  --btn:var(--tg-theme-button-color,#2481cc);
+  --btnfg:var(--tg-theme-button-text-color,#ffffff);
+  --card:var(--tg-theme-secondary-bg-color,#f1f5f9);
+  --ok:#16a34a;
+  --bad:#dc2626;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:640px;margin:0 auto}
+.top{padding:12px 16px 8px}
+.bar{height:6px;background:var(--card);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--btn);transition:width .3s}
+.stepinfo{font-size:12px;color:var(--hint);margin-top:6px;min-height:14px}
+main{flex:1;overflow-y:auto;padding:8px 16px 20px;-webkit-overflow-scrolling:touch}
+h1{font-size:24px;margin:6px 0 8px;line-height:1.25}
+h2{font-size:20px;margin:8px 0 6px;line-height:1.3}
+.hint{color:var(--hint);font-size:14px;line-height:1.5;margin:0 0 14px}
+.tag{display:inline-block;background:var(--card);color:var(--hint);font-size:12px;
+  padding:4px 10px;border-radius:99px;margin-bottom:6px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.chip{border:2px solid transparent;background:var(--card);color:var(--fg);border-radius:14px;
+  padding:16px 8px;font-size:18px;font-weight:600;cursor:pointer;font-family:inherit}
+.chip.sel{border-color:var(--btn);background:var(--btn);color:var(--btnfg)}
+.dir{display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:2px solid transparent;
+  background:var(--card);color:var(--fg);border-radius:14px;padding:12px 14px;margin-bottom:10px;
+  cursor:pointer;font-family:inherit}
+.dir .em{font-size:26px}
+.dir b{display:block;font-size:16px}
+.dir small{color:var(--hint);font-size:12px}
+.dir.sel{border-color:var(--btn)}
+.dir.sel small{color:var(--fg)}
+label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+input,textarea{width:100%;font-family:inherit;font-size:16px;color:var(--fg);background:var(--card);
+  border:2px solid transparent;border-radius:12px;padding:12px 14px;outline:none}
+input:focus,textarea:focus{border-color:var(--btn)}
+input:disabled{opacity:.7}
+textarea{resize:none;line-height:1.5}
+.phone{display:flex;align-items:center;background:var(--card);border-radius:12px;border:2px solid transparent}
+.phone:focus-within{border-color:var(--btn)}
+.phone span{padding-left:14px;font-weight:600}
+.phone input{background:transparent;border:0;padding-left:8px}
+.status{font-size:13px;margin-top:8px;min-height:18px;line-height:1.4}
+.status.ok{color:var(--ok)}
+.status.no{color:var(--bad)}
+.count{font-size:12px;color:var(--hint);text-align:right;margin-top:4px}
+.box{background:var(--card);border-radius:14px;padding:14px;font-size:14px;line-height:1.6;margin:10px 0}
+.box b{font-weight:600}
+.rows div{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:14px}
+.rows span{color:var(--hint)}
+.rows b{text-align:right}
+.check{display:flex;gap:10px;align-items:flex-start;margin:14px 0;font-size:14px;line-height:1.4;cursor:pointer}
+.check input{width:22px;height:22px;flex:none;margin:0;accent-color:var(--btn)}
+canvas{display:block;width:100%;aspect-ratio:600/240;touch-action:none;background:#fff;
+  border:2px dashed var(--hint);border-radius:12px}
+.link{background:none;border:0;color:var(--btn);font-size:14px;padding:8px 0;cursor:pointer;font-family:inherit}
+.foot{padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--card);
+  display:flex;gap:10px;flex-wrap:wrap;background:var(--bg)}
+.err{width:100%;background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.4}
+.btn{flex:1;border:0;border-radius:12px;padding:14px;font-size:16px;font-weight:600;cursor:pointer;
+  font-family:inherit;background:var(--btn);color:var(--btnfg)}
+.btn.sec{flex:0 0 auto;background:var(--card);color:var(--fg);padding:14px 20px}
+.btn:disabled{opacity:.5}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.done{text-align:center;padding-top:40px}
+.done .big{font-size:64px}
+ul.steps{padding-left:20px;line-height:1.8;font-size:15px;margin:8px 0}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="stepinfo" id="stepInfo"></div>
+  </div>
+  <main id="view"></main>
+  <div class="foot" id="foot">
+    <div class="err" id="err" hidden></div>
+    <button class="btn sec" id="btnBack">← Orqaga</button>
+    <button class="btn" id="btnNext">Davom etish</button>
+  </div>
+</div>
+ 
+<script>
+(() => {
+"use strict";
+ 
+/* ---------------------------------------------------------- Telegram */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  try { tg.ready(); tg.expand(); } catch (e) {}
+  try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) {}
+}
+const haptic = (type) => {
+  try {
+    if (!tg || !tg.HapticFeedback) return;
+    if (type === "error") tg.HapticFeedback.notificationOccurred("error");
+    else tg.HapticFeedback.impactOccurred("light");
+  } catch (e) {}
+};
+ 
+/* ------------------------------------------------------------ Ma'lumot */
+const DRAFT_KEY = "saylov_draft_v1";
+ 
+const GENERAL = [
+  "O‘zingizni qisqacha tanishtiring.",
+  "Nima uchun O‘quvchilar Kengashi a’zosi bo‘lishni xohlaysiz?",
+  "Sizningcha, haqiqiy lider qanday bo‘lishi kerak?",
+  "Sizni boshqa nomzodlardan ajratib turadigan jihatingiz nima?",
+  "Maktabimiz hayotida qanday o‘zgarish qilishni istaysiz?",
+  "Agar sizga bitta katta loyihani amalga oshirish imkoniyati berilsa, qanday loyiha tanlagan bo‘lardingiz?",
+  "Tengdoshlaringiz sizning fikringizga qo‘shilmasa, qanday yo‘l tutasiz?",
+  "Jamoada kelishmovchilik yuzaga kelsa, uni qanday hal qilasiz?",
+  "O‘qish va Kengash faoliyatini qanday muvozanatlashtirasiz?",
+  "Sizga ishonib topshirilgan vazifani bajara olmasangiz, nima qilasiz?"
+];
+ 
+const DIRECTIONS = [
+  { id: "leader", em: "🌟", title: "Kelajak liderligi", desc: "Faqat umumiy savollar", questions: [] },
+  { id: "education", em: "📚", title: "Ta’lim koordinatori", desc: "Bilim va o‘qish masalalari", questions: [
+    "O‘quvchilarning fanlarni o‘zlashtirish darajasini qanday oshirasiz?",
+    "A’lochi o‘quvchilar bilan qiynalayotgan o‘quvchilarni qanday hamkorlikka jalb qilasiz?",
+    "O‘qituvchi va o‘quvchilar o‘rtasidagi muammolarni qanday o‘rganasiz?",
+    "Maktabda bilim olishga qiziqishni oshirish uchun qanday loyiha taklif qilasiz?"
+  ]},
+  { id: "culture", em: "🎭", title: "Madaniyat koordinatori", desc: "Tadbirlar, san’at va qadriyatlar", questions: [
+    "Maktabda qanday yangi madaniy tadbir tashkil etgan bo‘lardingiz?",
+    "Iste’dodli, ammo o‘z qobiliyatini namoyon etishga tortinadigan o‘quvchilarni qanday qo‘llab-quvvatlaysiz?",
+    "Milliy urf-odat va qadriyatlarimizni tengdoshlaringiz orasida qanday targ‘ib qilasiz?",
+    "«Turon maktab teatri» yoki «Iqtidor maktab ansambli» uchun qanday g‘oyangiz bor?"
+  ]},
+  { id: "it", em: "💻", title: "IT va sun’iy intellekt koordinatori", desc: "Raqamli texnologiyalar", questions: [
+    "Qaysi dasturlar, raqamli vositalar yoki sun’iy intellekt xizmatlaridan foydalana olasiz?",
+    "Maktab hayotini yengillashtirish uchun qanday bot, sayt yoki platforma yaratgan bo‘lardingiz?",
+    "Sun’iy intellektdan foydalanishda qanday qoidalarga amal qilish kerak?",
+    "IT sohasiga qiziquvchi o‘quvchilarni birlashtirish uchun nima qilasiz?"
+  ]},
+  { id: "sport", em: "⚽", title: "Sport koordinatori", desc: "Sport va sog‘lom turmush", questions: [
+    "Sportga qiziqmaydigan o‘quvchilarni qanday jalb qilasiz?",
+    "Maktabda qaysi sport musobaqalarini tashkil etishni taklif qilasiz?",
+    "Sog‘lom turmush tarzini targ‘ib qilish uchun qanday tashabbus ko‘rsatasiz?",
+    "Sport musobaqasida mag‘lub bo‘lgan jamoani qanday ruhlantirasiz?"
+  ]},
+  { id: "eco", em: "🌿", title: "Ekologiya koordinatori", desc: "Tabiat va toza maktab", questions: [
+    "Maktabimizni yanada toza va ekologik xavfsiz hududga aylantirish uchun nima qilasiz?",
+    "Chiqindilarni kamaytirish yoki qayta ishlash bo‘yicha qanday loyiha taklif etasiz?",
+    "Suv va elektr energiyasini tejashga o‘quvchilarni qanday jalb qilasiz?",
+    "«Eko-maktab» loyihasi doirasida qanday tashabbusni amalga oshirgan bo‘lardingiz?"
+  ]},
+  { id: "media", em: "🎬", title: "Media koordinatori", desc: "Ijtimoiy tarmoq, foto va video", questions: [
+    "Maktabimizning rasmiy sahifalarini rivojlantirish uchun qanday g‘oyangiz bor?",
+    "Siz matn yozish, suratga olish, videomontaj yoki omma oldida chiqishning qaysi biriga qiziqasiz?",
+    "Noto‘g‘ri yoki tasdiqlanmagan xabar tarqalishining oldini qanday olasiz?",
+    "Maktabdagi bir kunni qiziqarli videolavha shaklida qanday yoritgan bo‘lardingiz?"
+  ]},
+  { id: "social", em: "🤝", title: "Ijtimoiy tashabbuslar koordinatori", desc: "Mehr-oqibat va yordam", questions: [
+    "Maktabimizdagi qaysi muammoni birinchi bo‘lib hal qilishga harakat qilgan bo‘lardingiz?",
+    "Yordamga muhtoj yoki jamoaga qo‘shilishda qiynalayotgan o‘quvchilarni qanday qo‘llab-quvvatlaysiz?",
+    "Mehr-oqibat, tenglik va o‘zaro hurmatni targ‘ib qilish uchun qanday loyiha tashkil etasiz?",
+    "Tengdoshlaringiz siz taklif qilgan loyihada qatnashishni istamasa, ularni qanday jalb qilasiz?"
+  ]}
+];
+ 
+const COMMITMENT =
+  "Men ushbu arizani topshirish orqali O‘quvchilar Kengashi faoliyatining ixtiyoriyligi, tenglik, " +
+  "ochiqlik va oshkoralik, hurmat, mas’uliyat, tayyorlik va natijadorlik tamoyillariga amal qilishga " +
+  "roziman. Saylov vaqtida boshqa ishtirokchilarning huquq va manfaatlarini hurmat qilish, ovoz berish " +
+  "vaqtida bosim o‘tkazmaslik hamda saylov natijalarini hurmat qilish majburiyatini olaman.";
+ 
+const state = {
+  step: 0,
+  cls: null,
+  fullName: "",
+  direction: null,
+  region: "Taxiatosh tumani, Naymankul stansiya",
+  institution: "15-umumiy o‘rta ta’lim maktabi",
+  birth: "",
+  phone: "",           // faqat 9 ta raqam
+  contact: "",
+  general: Array(GENERAL.length).fill(""),
+  special: [],
+  agree: false,
+  signature: null,     // draftga saqlanmaydi
+  done: false
+};
+ 
+/* -------------------------------------------------------------- Yordamchi */
+const $ = (id) => document.getElementById(id);
+const view = $("view");
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dirById = (id) => DIRECTIONS.find((d) => d.id === id) || null;
+ 
+const CONTACT_RE = /^(@[A-Za-z0-9_]{5,32}|[^@\s]+@[^@\s]+\.[^@\s]{2,})$/;
+const NAME_WORD_RE = /^[\p{L}][\p{L}'’‘ʻʼ`´-]+$/u;
+ 
+function save() {
+  if (state.done) return;
+  try {
+    const copy = Object.assign({}, state);
+    delete copy.signature;
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(copy));
+  } catch (e) {}
+}
+function load() {
+  try {
+    const j = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    if (j && typeof j === "object") {
+      Object.assign(state, j);
+      state.signature = null;
+      state.done = false;
+      if (!Array.isArray(state.general) || state.general.length !== GENERAL.length)
+        state.general = Array(GENERAL.length).fill("");
+      if (!Array.isArray(state.special)) state.special = [];
+    }
+  } catch (e) {}
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+ 
+/* ---------------------------------------------------- Ism-familiya tekshiruvi */
+function normalizeName(s) {
+  return s.split(" ").map((w) =>
+    w.split("-").map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join("-")
+  ).join(" ");
+}
+function nameCheck(raw) {
+  const s = raw.trim().replace(/\s+/g, " ");
+  if (!s) return { ok: false, msg: "" };
+  if (/[.,\d_]/.test(s))
+    return { ok: false, msg: "❌ Nuqta, vergul yoki raqam bo‘lmasin. Ism-familiyani qisqartirmasdan, to‘liq yozing." };
+  const parts = s.split(" ");
+  if (parts.length < 2)
+    return { ok: false, msg: "❌ Familiya va ismingizni ikkalasini ham yozing (masalan: Qazaqbayev Jamshid)." };
+  if (parts.length > 4)
+    return { ok: false, msg: "❌ Juda ko‘p so‘z. Faqat familiya va ismingizni yozing." };
+  for (const p of parts) {
+    const letters = (p.match(/\p{L}/gu) || []).length;
+    if (letters < 2)
+      return { ok: false, msg: "❌ “" + p + "” qisqartirilgan. Har bir so‘zni to‘liq yozing." };
+    if (!NAME_WORD_RE.test(p))
+      return { ok: false, msg: "❌ “" + p + "” so‘zida noto‘g‘ri belgi bor." };
+  }
+  return { ok: true, msg: "✅ To‘g‘ri yozilgan", value: normalizeName(s) };
+}
+ 
+/* ------------------------------------------------------------ Qadamlar */
+function buildSteps() {
+  const list = [{ t: "welcome" }, { t: "class" }, { t: "name" }, { t: "direction" }, { t: "details" }];
+  GENERAL.forEach((q, i) => list.push({ t: "q", kind: "general", i, q }));
+  const d = dirById(state.direction);
+  if (d) d.questions.forEach((q, i) => list.push({ t: "q", kind: "special", i, q }));
+  list.push({ t: "final" });
+  return list;
+}
+let steps = buildSteps();
+const cur = () => steps[Math.min(state.step, steps.length - 1)];
+ 
+const getAns = (st) => (st.kind === "general" ? state.general : state.special)[st.i] || "";
+const setAns = (st, v) => { (st.kind === "general" ? state.general : state.special)[st.i] = v; };
+ 
+function validate(st) {
+  switch (st.t) {
+    case "class":
+      return state.cls ? null : "Avval sinfingizni tanlang.";
+    case "name": {
+      const r = nameCheck(state.fullName);
+      return r.ok ? null : (r.msg || "Familiya va ismingizni yozing.");
+    }
+    case "direction":
+      return state.direction ? null : "Yo‘nalishni tanlang.";
+    case "details": {
+      if (state.region.trim().length < 3) return "Aymoqni yozing.";
+      if (state.institution.trim().length < 3) return "Ta’lim muassasasi nomini yozing.";
+      if (!state.birth) return "Tug‘ilgan sanangizni kiriting.";
+      const y = parseInt(state.birth.slice(0, 4), 10);
+      if (!(y >= 2005 && y <= 2017)) return "Tug‘ilgan sana noto‘g‘ri kiritilgan.";
+      if (state.phone.length !== 9) return "Telefon raqamini to‘liq kiriting (9 ta raqam, masalan: 90 123 45 67).";
+      if (!CONTACT_RE.test(state.contact.trim()))
+        return "Telegram username (@username ko‘rinishida) yoki email manzilini to‘g‘ri yozing.";
+      return null;
+    }
+    case "q":
+      return getAns(st).trim().length >= 10 ? null : "Kamida 10 ta belgidan iborat javob yozing.";
+    case "final":
+      if (!state.agree) return "Majburiyatlar bilan tanishganingizni tasdiqlovchi belgini qo‘ying.";
+      if (!state.signature) return "Imzo qo‘ying: maydonga barmog‘ingiz bilan chizing.";
+      return null;
+  }
+  return null;
+}
+ 
+/* ---------------------------------------------------------- Xato oynasi */
+function showErr(msg) {
+  const e = $("err");
+  e.textContent = msg;
+  e.hidden = false;
+  e.classList.remove("shake");
+  void e.offsetWidth;
+  e.classList.add("shake");
+  haptic("error");
+}
+function hideErr() { $("err").hidden = true; }
+ 
+/* ------------------------------------------------------------ Navigatsiya */
+let autoTimer = null;
+function go(d) {
+  if (d > 0) {
+    const err = validate(cur());
+    if (err) { showErr(err); return; }
+    if (cur().t === "name") state.fullName = nameCheck(state.fullName).value;
+  }
+  steps = buildSteps();
+  state.step = Math.max(0, Math.min(steps.length - 1, state.step + d));
+  save();
+  render();
+  view.scrollTop = 0;
+}
+function autoAdvance(t) {
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(() => { if (cur().t === t) go(1); }, 200);
+}
+function onNext() {
+  const st = cur();
+  if (st.t === "final") {
+    const err = validate(st);
+    if (err) { showErr(err); return; }
+    submit();
+  } else {
+    go(1);
+  }
+}
+ 
+/* --------------------------------------------------------------- Ekranlar */
+const R = {};
+ 
+R.welcome = () => {
+  view.innerHTML =
+    '<h1>🗳 O‘quvchilar Kengashi saylovi</h1>' +
+    '<p class="hint">Rishton tumani 30-umumiy o‘rta ta’lim maktabi</p>' +
+    '<div class="box"><b>Ariza topshirish tartibi:</b>' +
+    '<ul class="steps"><li>Sinfingizni tanlaysiz</li><li>Familiya va ismingizni yozasiz</li>' +
+    '<li>Yo‘nalishni tanlaysiz</li><li>Ariza ma’lumotlarini to‘ldirasiz</li>' +
+    '<li>Savollarga javob berasiz</li><li>Imzo qo‘yib yuborasiz</li></ul></div>' +
+    '<div class="box">⏱ Taxminan 10–15 daqiqa vaqt ketadi. Yozganlaringiz avtomatik saqlanadi, ' +
+    'ilovani yopib qaytsangiz ham davom ettirasiz.<br><br>' +
+    '👨‍💼 Mas’ul: maktab maslahatchisi F. Rahimjonov.</div>';
+};
+ 
+R.class = () => {
+  view.innerHTML =
+    '<h2>Nechinchi sinfda o‘qiysiz?</h2>' +
+    '<p class="hint">Sinfingizni bosing. Har bir sinfdan bitta sardor saylanadi.</p>' +
+    '<div class="grid">' +
+    [5, 6, 7, 8, 9, 10, 11].map((n) =>
+      '<button class="chip' + (state.cls === n ? " sel" : "") + '" data-n="' + n + '">' + n + '-sinf</button>'
+    ).join("") + "</div>";
+  view.querySelectorAll("[data-n]").forEach((b) => {
+    b.onclick = () => {
+      state.cls = parseInt(b.dataset.n, 10);
+      haptic(); hideErr(); save(); render();
+      autoAdvance("class");
+    };
+  });
+};
+ 
+R.name = () => {
+  view.innerHTML =
+    '<h2>Familiya va ismingiz</h2>' +
+    '<p class="hint">To‘liq yozing, qisqartirmang. Masalan: <b>Qazaqbayev Jamshid</b><br>' +
+    '“Q.Jamshid” yoki faqat “Jamshid” deb yozish qabul qilinmaydi.</p>' +
+    '<input id="nm" type="text" autocomplete="off" autocapitalize="words" placeholder="Familiya Ism">' +
+    '<div class="status" id="nmS"></div>';
+  const inp = $("nm");
+  inp.value = state.fullName;
+  const upd = () => {
+    state.fullName = inp.value;
+    const r = nameCheck(inp.value);
+    const s = $("nmS");
+    s.textContent = r.msg;
+    s.className = "status " + (r.msg ? (r.ok ? "ok" : "no") : "");
+  };
+  inp.addEventListener("input", () => { hideErr(); upd(); save(); });
+  upd();
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") onNext(); });
+};
+ 
+R.direction = () => {
+  view.innerHTML =
+    '<h2>Qaysi yo‘nalishga nomzodsiz?</h2>' +
+    '<p class="hint">Kelajak liderligi yoki 7 ta koordinatorlik yo‘nalishidan birini tanlang.</p>' +
+    DIRECTIONS.map((d) =>
+      '<button class="dir' + (state.direction === d.id ? " sel" : "") + '" data-id="' + d.id + '">' +
+      '<span class="em">' + d.em + '</span><span><b>' + esc(d.title) + '</b><small>' + esc(d.desc) + '</small></span></button>'
+    ).join("");
+  view.querySelectorAll("[data-id]").forEach((b) => {
+    b.onclick = () => {
+      if (state.direction !== b.dataset.id) state.special = [];
+      state.direction = b.dataset.id;
+      haptic(); hideErr(); save(); render();
+      autoAdvance("direction");
+    };
+  });
+};
+ 
+R.details = () => {
+  view.innerHTML =
+    '<h2>Ariza ma’lumotlari</h2>' +
+    '<p class="hint">Saylov bosqichi: <b>Maktab bosqichi</b></p>' +
+    '<label>Aymoq</label><input id="rg" type="text" autocomplete="off">' +
+    '<label>Ta’lim muassasasi</label><input id="in" type="text" autocomplete="off">' +
+    '<label>Familiya Ism</label><input type="text" disabled value="' + esc(state.fullName) + '">' +
+    '<label>Sinf</label><input type="text" disabled value="' + esc(state.cls) + '-sinf">' +
+    '<label>Tug‘ilgan sana</label><input id="bd" type="date" min="2005-01-01" max="2017-12-31">' +
+    '<label>Telefon raqam</label><div class="phone"><span>+998</span>' +
+    '<input id="ph" type="tel" inputmode="numeric" autocomplete="off" placeholder="90 123 45 67"></div>' +
+    '<label>Telegram username yoki email</label>' +
+    '<input id="ct" type="text" autocomplete="off" autocapitalize="none" placeholder="@username yoki ism@gmail.com">';
+  const bind = (id, key) => {
+    const el = $(id);
+    el.value = state[key];
+    el.addEventListener("input", () => { state[key] = el.value; hideErr(); save(); });
+  };
+  bind("rg", "region"); bind("in", "institution"); bind("bd", "birth"); bind("ct", "contact");
+  const ph = $("ph");
+  const fmt = (d) => {
+    let o = d.slice(0, 2);
+    if (d.length > 2) o += " " + d.slice(2, 5);
+    if (d.length > 5) o += " " + d.slice(5, 7);
+    if (d.length > 7) o += " " + d.slice(7, 9);
+    return o;
+  };
+  ph.value = fmt(state.phone);
+  ph.addEventListener("input", () => {
+    let d = ph.value.replace(/\D/g, "");
+    if (d.startsWith("998") && d.length > 9) d = d.slice(3);
+    d = d.slice(0, 9);
+    state.phone = d;
+    ph.value = fmt(d);
+    hideErr(); save();
+  });
+};
+ 
+R.q = (st) => {
+  const d = dirById(state.direction);
+  const total = st.kind === "general" ? GENERAL.length : (d ? d.questions.length : 0);
+  const label = st.kind === "general"
+    ? "Umumiy savol " + (st.i + 1) + "/" + total
+    : (d ? d.title : "") + " — savol " + (st.i + 1) + "/" + total;
+  view.innerHTML =
+    '<span class="tag">' + esc(label) + '</span>' +
+    '<h2>' + esc(st.q) + '</h2>' +
+    '<p class="hint">O‘z so‘zlaringiz bilan, samimiy yozing (kamida 10 ta belgi).</p>' +
+    '<textarea id="ta" rows="9" maxlength="1000" placeholder="Javobingizni shu yerga yozing..."></textarea>' +
+    '<div class="count" id="cnt"></div>';
+  const ta = $("ta");
+  ta.value = getAns(st);
+  const upd = () => { $("cnt").textContent = ta.value.length + " / 1000"; };
+  ta.addEventListener("input", () => { setAns(st, ta.value); hideErr(); upd(); save(); });
+  upd();
+};
+ 
+R.final = () => {
+  const d = dirById(state.direction);
+  const today = new Date();
+  const ds = String(today.getDate()).padStart(2, "0") + "." +
+             String(today.getMonth() + 1).padStart(2, "0") + "." + today.getFullYear();
+  view.innerHTML =
+    '<h2>Nomzod majburiyatlari</h2>' +
+    '<div class="box rows">' +
+    '<div><span>Familiya Ism</span><b>' + esc(state.fullName) + '</b></div>' +
+    '<div><span>Sinf</span><b>' + esc(state.cls) + '-sinf</b></div>' +
+    '<div><span>Yo‘nalish</span><b>' + esc(d ? d.title : "") + '</b></div>' +
+    '<div><span>Telefon</span><b>+998 ' + esc(state.phone) + '</b></div>' +
+    '<div><span>Sana</span><b>' + ds + '</b></div></div>' +
+    '<div class="box">' + esc(COMMITMENT) + '</div>' +
+    '<label class="check"><input type="checkbox" id="ag"><span>Yuqoridagi majburiyatlar bilan tanishdim va roziman</span></label>' +
+    '<label>Imzo (barmog‘ingiz bilan chizing)</label>' +
+    '<canvas id="sig"></canvas>' +
+    '<button class="link" id="clr">🗑 Imzoni tozalash</button>';
+  const ag = $("ag");
+  ag.checked = state.agree;
+  ag.addEventListener("change", () => { state.agree = ag.checked; hideErr(); save(); });
+  setupCanvas($("sig"), $("clr"));
+};
+ 
+function setupCanvas(cv, clearBtn) {
+  const W = 600, H = 240;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  const blank = () => { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); };
+  blank();
+  ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111";
+  if (state.signature) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0, W, H);
+    img.src = state.signature;
+  }
+  let drawing = false, last = null, segs = state.signature ? 99 : 0;
+  const pos = (e) => {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+  };
+  cv.addEventListener("pointerdown", (e) => {
+    drawing = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    last = pos(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(last.x + 0.1, last.y + 0.1); ctx.stroke();
+    hideErr();
+    e.preventDefault();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const p = pos(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last = p; segs++;
+    e.preventDefault();
+  });
+  const end = () => {
+    if (!drawing) return;
+    drawing = false;
+    if (segs >= 8) state.signature = cv.toDataURL("image/png");
+  };
+  cv.addEventListener("pointerup", end);
+  cv.addEventListener("pointercancel", end);
+  cv.addEventListener("pointerleave", end);
+  clearBtn.onclick = () => { blank(); state.signature = null; segs = 0; };
+}
+ 
+function renderDone() {
+  $("foot").hidden = true;
+  $("barFill").style.width = "100%";
+  $("stepInfo").textContent = "Yakunlandi";
+  view.innerHTML =
+    '<div class="done"><div class="big">✅</div><h1>Arizangiz yuborildi!</h1>' +
+    '<p class="hint">Rahmat! Arizangiz qabul qilindi. Botga tasdiqlovchi xabar keladi. ' +
+    'Natijalar haqida maktab maslahatchisi xabar beradi.</p>' +
+    '<button class="btn" id="closeBtn" style="width:100%">Yopish</button></div>';
+  $("closeBtn").onclick = () => { if (tg && tg.close) tg.close(); };
+}
+ 
+/* ------------------------------------------------------------------ Render */
+function render() {
+  if (state.done) { renderDone(); return; }
+  steps = buildSteps();
+  if (state.step > steps.length - 1) state.step = steps.length - 1;
+  if (state.step < 0) state.step = 0;
+  const st = cur();
+  hideErr();
+  R[st.t](st);
+ 
+  const last = steps.length - 1;
+  $("barFill").style.width = Math.round((state.step / last) * 100) + "%";
+  $("stepInfo").textContent = state.step === 0 ? "" : "Bosqich " + state.step + " / " + last;
+  $("btnBack").style.display = state.step === 0 ? "none" : "";
+  $("btnNext").textContent =
+    st.t === "welcome" ? "Boshlash" : st.t === "final" ? "Arizani yuborish ✅" : "Davom etish";
+}
+ 
+/* ------------------------------------------------------------------ Yuborish */
+let sending = false;
+async function submit() {
+  if (sending) return;
+  const initData = tg ? tg.initData : "";
+  if (!initData) {
+    showErr("Ilova Telegram ichida ochilishi kerak. Botga kirib /start bosing va tugmani bosing.");
+    return;
+  }
+  const d = dirById(state.direction);
+  const btn = $("btnNext");
+  sending = true; btn.disabled = true; btn.textContent = "Yuborilmoqda...";
+  hideErr();
+  const payload = {
+    initData,
+    data: {
+      cls: state.cls,
+      fullName: state.fullName,
+      direction: state.direction,
+      region: state.region.trim(),
+      institution: state.institution.trim(),
+      birth: state.birth,
+      phone: "+998" + state.phone,
+      contact: state.contact.trim(),
+      general: GENERAL.map((q, i) => ({ q, a: state.general[i].trim() })),
+      special: d ? d.questions.map((q, i) => ({ q, a: (state.special[i] || "").trim() })) : [],
+      agree: state.agree,
+      signature: state.signature
+    }
+  };
+  try {
+    const r = await fetch("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) {
+      state.done = true;
+      clearDraft();
+      try { if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success"); } catch (e) {}
+      render();
+    } else {
+      showErr(j.error || "Xatolik yuz berdi. Qayta urinib ko‘ring.");
+    }
+  } catch (e) {
+    showErr("Internet bilan muammo. Aloqani tekshirib, qayta urinib ko‘ring.");
+  } finally {
+    sending = false;
+    if (!state.done) { btn.disabled = false; btn.textContent = "Arizani yuborish ✅"; }
+  }
+}
+ 
+/* -------------------------------------------------------------------- Boshlash */
+$("btnBack").onclick = () => go(-1);
+$("btnNext").onclick = onNext;
+load();
+render();
+})();
+</script>
+</body>
+</html>
