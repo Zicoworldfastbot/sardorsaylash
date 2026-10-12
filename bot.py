@@ -141,7 +141,7 @@ async def cmd_start(m: Message):
     )
     await m.answer(
         "👋 <b>Assalomu alaykum!</b>\n\n"
-        "🏫 Rishton tumani 30-umumiy o'rta ta'lim maktabi <b>O'quvchilar Kengashi</b> "
+        "🏫 Taxiatosh Tumani 15-umumiy o'rta ta'lim maktabi <b>O'quvchilar Kengashi</b> "
         "saylovida ishtirok etish uchun ariza topshiring.\n\n"
         "Quyidagi tugmani bosing 👇 va barcha savollarga javob bering. "
         "Oxirida imzo qo'yasiz.\n\n"
@@ -195,7 +195,7 @@ def build_text(row: dict) -> str:
         f"F.I.Sh.: {row['full_name']}",
         f"Sinf: {row['grade']}-sinf",
         f"Yo'nalish: {row['direction']}",
-        f"Aymoq: {row['region']}",
+        f"Adres: {row['region']}",
         f"Muassasa: {row['institution']}",
         f"Tug'ilgan sana: {row['birth_date']}",
         f"Telefon: {row['phone']}",
