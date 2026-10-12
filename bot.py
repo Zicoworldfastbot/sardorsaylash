@@ -1,3 +1,4 @@
+"""
 O'quvchilar Kengashi saylovi: Telegram bot + Mini App serveri (bitta fayl).
  
 Nima qiladi:
