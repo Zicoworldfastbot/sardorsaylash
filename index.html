@@ -113,7 +113,7 @@ const haptic = (type) => {
 };
  
 /* ------------------------------------------------------------ Ma'lumot */
-const DRAFT_KEY = "saylov_draft_v1";
+const DRAFT_KEY = "saylov_draft_v2";
  
 const GENERAL = [
   "O‘zingizni qisqacha tanishtiring.",
@@ -125,7 +125,8 @@ const GENERAL = [
   "Tengdoshlaringiz sizning fikringizga qo‘shilmasa, qanday yo‘l tutasiz?",
   "Jamoada kelishmovchilik yuzaga kelsa, uni qanday hal qilasiz?",
   "O‘qish va Kengash faoliyatini qanday muvozanatlashtirasiz?",
-  "Sizga ishonib topshirilgan vazifani bajara olmasangiz, nima qilasiz?"
+  "Sizga ishonib topshirilgan vazifani bajara olmasangiz, nima qilasiz?",
+  "Agar siz sardor bo‘lolmasangiz, kimga ovoz berasiz?"
 ];
  
 const DIRECTIONS = [
@@ -185,11 +186,10 @@ const state = {
   cls: null,
   fullName: "",
   direction: null,
-  region: "Taxiatosh tumani, Naymankul stansiya",
+  region: "Qoraqalpog‘iston Respublikasi, Taxiatosh tumani",
   institution: "15-umumiy o‘rta ta’lim maktabi",
   birth: "",
   phone: "",           // faqat 9 ta raqam
-  contact: "",
   general: Array(GENERAL.length).fill(""),
   special: [],
   agree: false,
@@ -204,7 +204,6 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const dirById = (id) => DIRECTIONS.find((d) => d.id === id) || null;
  
-const CONTACT_RE = /^(@[A-Za-z0-9_]{5,32}|[^@\s]+@[^@\s]+\.[^@\s]{2,})$/;
 const NAME_WORD_RE = /^[\p{L}][\p{L}'’‘ʻʼ`´-]+$/u;
  
 function save() {
@@ -288,8 +287,6 @@ function validate(st) {
       const y = parseInt(state.birth.slice(0, 4), 10);
       if (!(y >= 2005 && y <= 2017)) return "Tug‘ilgan sana noto‘g‘ri kiritilgan.";
       if (state.phone.length !== 9) return "Telefon raqamini to‘liq kiriting (9 ta raqam, masalan: 90 123 45 67).";
-      if (!CONTACT_RE.test(state.contact.trim()))
-        return "Telegram username (@username ko‘rinishida) yoki email manzilini to‘g‘ri yozing.";
       return null;
     }
     case "q":
@@ -356,7 +353,7 @@ R.welcome = () => {
     '<li>Savollarga javob berasiz</li><li>Imzo qo‘yib yuborasiz</li></ul></div>' +
     '<div class="box">⏱ Taxminan 10–15 daqiqa vaqt ketadi. Yozganlaringiz avtomatik saqlanadi, ' +
     'ilovani yopib qaytsangiz ham davom ettirasiz.<br><br>' +
-    '👨‍💼 Mas’ul: maktab maslahatchisi F. Rahimjonov.</div>';
+    'ℹ️ Agar botda muammo chiqsa, Madatga xabar bering.</div>';
 };
  
 R.class = () => {
@@ -380,7 +377,7 @@ R.name = () => {
   view.innerHTML =
     '<h2>Familiya va ismingiz</h2>' +
     '<p class="hint">To‘liq yozing, qisqartirmang. Masalan: <b>Qazaqbayev Jamshid</b><br>' +
-    '“Q.Jamshid” yoki faqat “Jamshid” deb yozish qabul qilinmaydi.</p>' +
+    'Faqat ism yozish (masalan: “Madat”) yoki qisqartirib yozish taqiqlanadi.</p>' +
     '<input id="nm" type="text" autocomplete="off" autocapitalize="words" placeholder="Familiya Ism">' +
     '<div class="status" id="nmS"></div>';
   const inp = $("nm");
@@ -426,14 +423,13 @@ R.details = () => {
     '<label>Tug‘ilgan sana</label><input id="bd" type="date" min="2005-01-01" max="2017-12-31">' +
     '<label>Telefon raqam</label><div class="phone"><span>+998</span>' +
     '<input id="ph" type="tel" inputmode="numeric" autocomplete="off" placeholder="90 123 45 67"></div>' +
-    '<label>Telegram username yoki email</label>' +
-    '<input id="ct" type="text" autocomplete="off" autocapitalize="none" placeholder="@username yoki ism@gmail.com">';
+    '';
   const bind = (id, key) => {
     const el = $(id);
     el.value = state[key];
     el.addEventListener("input", () => { state[key] = el.value; hideErr(); save(); });
   };
-  bind("rg", "region"); bind("in", "institution"); bind("bd", "birth"); bind("ct", "contact");
+  bind("rg", "region"); bind("in", "institution"); bind("bd", "birth");
   const ph = $("ph");
   const fmt = (d) => {
     let o = d.slice(0, 2);
@@ -545,8 +541,7 @@ function renderDone() {
   $("stepInfo").textContent = "Yakunlandi";
   view.innerHTML =
     '<div class="done"><div class="big">✅</div><h1>Arizangiz yuborildi!</h1>' +
-    '<p class="hint">Rahmat! Arizangiz qabul qilindi. Botga tasdiqlovchi xabar keladi. ' +
-    'Natijalar haqida maktab maslahatchisi xabar beradi.</p>' +
+    '<p class="hint">Rahmat! Arizangiz qabul qilindi. Botga tasdiqlovchi xabar keladi.</p>' +
     '<button class="btn" id="closeBtn" style="width:100%">Yopish</button></div>';
   $("closeBtn").onclick = () => { if (tg && tg.close) tg.close(); };
 }
@@ -592,7 +587,6 @@ async function submit() {
       institution: state.institution.trim(),
       birth: state.birth,
       phone: "+998" + state.phone,
-      contact: state.contact.trim(),
       general: GENERAL.map((q, i) => ({ q, a: state.general[i].trim() })),
       special: d ? d.questions.map((q, i) => ({ q, a: (state.special[i] || "").trim() })) : [],
       agree: state.agree,
