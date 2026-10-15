@@ -9,6 +9,7 @@
 # ---------------------------------------------------------------------------
 import asyncio
 import base64
+from collections import Counter
 import hashlib
 import hmac
 import json
@@ -17,18 +18,19 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from html import escape
+from html import escape as _html_escape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
  
 import httpx
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     BufferedInputFile,
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     MenuButtonWebApp,
@@ -45,6 +47,11 @@ from docx.shared import Cm, Pt, RGBColor
  
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("saylov")
+ 
+ 
+def escape(text) -> str:
+    """Telegram HTML uchun: faqat < > & almashtiriladi (apostrof o'z holicha qoladi)."""
+    return _html_escape(str(text), quote=False)
  
 # ----------------------------------------------------------------- SOZLAMALAR
 BOT_TOKEN = os.environ["BOT_TOKEN"].strip()
@@ -63,7 +70,7 @@ SCHOOL = "Taxiatosh tumani 15-umumiy o'rta ta'lim maktabi"
 HELP_LINE = "Agar botda muammo chiqsa, Madatga xabar bering."
 TZ = timezone(timedelta(hours=5))  # Toshkent vaqti
  
-GENERAL_COUNT = 11  # umumiy savollar soni (index.html dagi GENERAL bilan bir xil)
+GENERAL_COUNT = 10  # umumiy savollar soni (index.html dagi GENERAL bilan bir xil)
 SPECIAL_COUNT = 4   # yo'nalish savollari soni (Kelajak liderligidan tashqari)
  
 DIRECTIONS = {
@@ -99,6 +106,13 @@ def check_name(raw: str):
         "-".join(seg[:1].upper() + seg[1:].lower() for seg in w.split("-"))
         for w in parts
     )
+ 
+ 
+def name_key(name: str) -> str:
+    """Ovozlarni sanash uchun kalit: bir odamning turlicha yozilishini birlashtiradi
+    (katta-kichik harf, apostrof turi va so'zlar tartibi farqi hisobga olinmaydi)."""
+    s = re.sub(r"[‘’ʻʼ`´]", "'", str(name).lower())
+    return " ".join(sorted(s.split()))
  
  
 def verify_init_data(init_data: str):
@@ -143,6 +157,163 @@ async def sb(method: str, path: str, **kw):
 router = Router()
  
  
+# ---------------------------------------------------- OVOZ BERISH SOZLAMASI
+async def voting_open() -> bool:
+    """Ovoz berish yoqilganmi? Jadval yo'q yoki xato bo'lsa, yoqilgan deb hisoblanadi."""
+    try:
+        r = await sb("GET", "settings?key=eq.voting_open&select=value")
+        if r.status_code == 200:
+            rows = r.json()
+            if rows:
+                return str(rows[0]["value"]).lower() == "true"
+            return True
+        log.warning("settings o'qib bo'lmadi: %s %s", r.status_code, r.text[:200])
+    except Exception:
+        log.exception("settings o'qishda xato")
+    return True
+ 
+ 
+async def set_voting(open_: bool) -> bool:
+    try:
+        r = await sb(
+            "POST",
+            "settings?on_conflict=key",
+            json={"key": "voting_open", "value": "true" if open_ else "false"},
+            headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+        if r.status_code in (200, 201, 204):
+            return True
+        log.error("settings yozib bo'lmadi: %s %s", r.status_code, r.text[:300])
+    except Exception:
+        log.exception("settings yozishda xato")
+    return False
+ 
+ 
+async def fetch_rows():
+    r = await sb("GET", "applications?select=grade,full_name,vote_for&order=created_at.asc&limit=5000")
+    if r.status_code != 200:
+        raise RuntimeError(f"{r.status_code}: {r.text[:200]}")
+    return r.json()
+ 
+ 
+def format_results(rows: list, is_open: bool) -> str:
+    """Kim necha ovoz olgani: umumiy va sinflar bo'yicha, foizda."""
+    voters = [x for x in rows if x.get("vote_for")]
+    total = len(voters)
+    head = [
+        "📊 <b>Ovoz berish natijalari</b>",
+        "Holat: " + ("🟢 yoqilgan" if is_open else "🔴 to'xtatilgan"),
+        f"Jami arizalar: {len(rows)}",
+        f"Ovoz berganlar: {total}",
+    ]
+    if not total:
+        return "\n".join(head + ["", "Hozircha ovoz yo'q."])
+ 
+    def table(items, limit):
+        groups = {}
+        for x in items:
+            groups.setdefault(name_key(x["vote_for"]), []).append(x["vote_for"])
+        ranked = sorted(groups.values(), key=lambda v: (-len(v), Counter(v).most_common(1)[0][0]))
+        n = len(items)
+        out = []
+        for i, names in enumerate(ranked[:limit], 1):
+            shown = Counter(names).most_common(1)[0][0]
+            out.append(f"{i}. {escape(shown)} — {len(names)} ta ({len(names) / n * 100:.1f}%)")
+        if len(ranked) > limit:
+            out.append(f"… yana {len(ranked) - limit} ta ism")
+        return out
+ 
+    lines = head + ["", "<b>Umumiy (hamma sinflar):</b>"] + table(voters, 30)
+    for g in range(5, 12):
+        items = [x for x in voters if x["grade"] == g]
+        if items:
+            lines += ["", f"<b>{g}-sinf o'quvchilari ({len(items)} ta ovoz):</b>"] + table(items, 5)
+    return "\n".join(lines)
+ 
+ 
+async def send_long(bot: Bot, chat_id: int, text: str, reply_markup=None):
+    parts, chunk = [], ""
+    for line in text.split("\n"):
+        if len(chunk) + len(line) + 1 > 3800:
+            parts.append(chunk)
+            chunk = ""
+        chunk += line + "\n"
+    if chunk.strip():
+        parts.append(chunk)
+    for i, part in enumerate(parts):
+        await bot.send_message(chat_id, part, reply_markup=reply_markup if i == len(parts) - 1 else None)
+ 
+ 
+def admin_kb(is_open: bool) -> InlineKeyboardMarkup:
+    if is_open:
+        toggle = InlineKeyboardButton(text="🛑 Ovozni to'xtatish", callback_data="adm:stop")
+    else:
+        toggle = InlineKeyboardButton(text="▶️ Ovozni qayta yoqish", callback_data="adm:start")
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="📊 Natijalar", callback_data="adm:results")], [toggle]]
+    )
+ 
+ 
+async def send_results(bot: Bot, chat_id: int):
+    is_open = await voting_open()
+    try:
+        rows = await fetch_rows()
+    except Exception as e:
+        await bot.send_message(
+            chat_id,
+            "⚠️ Natijalarni o'qib bo'lmadi. Supabase'da yangi supabase.sql ni ishga tushirganmisiz?\n"
+            f"<code>{escape(str(e))}</code>",
+        )
+        return
+    await send_long(bot, chat_id, format_results(rows, is_open), admin_kb(is_open))
+ 
+ 
+@router.message(Command("admin"))
+async def cmd_admin(m: Message, bot: Bot):
+    if m.from_user.id != ADMIN_ID:
+        return
+    await send_results(bot, m.chat.id)
+ 
+ 
+@router.callback_query(F.data.startswith("adm:"))
+async def on_admin_button(cb: CallbackQuery, bot: Bot):
+    if cb.from_user.id != ADMIN_ID:
+        await cb.answer("Ruxsat yo'q", show_alert=True)
+        return
+    action = cb.data.split(":", 1)[1]
+    chat_id = cb.from_user.id
+    await cb.answer()
+    if action == "results":
+        await send_results(bot, chat_id)
+    elif action == "stop":
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Ha, to'xtatish", callback_data="adm:stop_yes"),
+                InlineKeyboardButton(text="❌ Yo'q", callback_data="adm:cancel"),
+            ]]
+        )
+        await bot.send_message(
+            chat_id,
+            "🛑 <b>Ovoz berishni to'xtatmoqchimisiz?</b>\n\n"
+            "Shundan keyin yangi arizalarda “Kimga ovoz berasiz?” savoli so'ralmaydi. "
+            "Keyin qayta yoqish mumkin.",
+            reply_markup=kb,
+        )
+    elif action == "stop_yes":
+        if await set_voting(False):
+            await bot.send_message(chat_id, "🛑 Ovoz berish <b>to'xtatildi</b>. Yakuniy natijalar:")
+            await send_results(bot, chat_id)
+        else:
+            await bot.send_message(chat_id, "⚠️ Saqlab bo'lmadi. Supabase'da yangi supabase.sql ni ishga tushiring.")
+    elif action == "start":
+        if await set_voting(True):
+            await bot.send_message(chat_id, "▶️ Ovoz berish <b>qayta yoqildi</b>.", reply_markup=admin_kb(True))
+        else:
+            await bot.send_message(chat_id, "⚠️ Saqlab bo'lmadi. Supabase'da yangi supabase.sql ni ishga tushiring.")
+    elif action == "cancel":
+        await bot.send_message(chat_id, "Bekor qilindi.", reply_markup=admin_kb(await voting_open()))
+ 
+ 
 @router.message(CommandStart())
 async def cmd_start(m: Message):
     if not WEBAPP_URL:
@@ -162,6 +333,11 @@ async def cmd_start(m: Message):
         f"ℹ️ {HELP_LINE}",
         reply_markup=kb,
     )
+    if m.from_user.id == ADMIN_ID:
+        await m.answer(
+            "🔐 <b>Admin panel</b>\nNatijalarni ko'rish va ovozni to'xtatish shu yerda.",
+            reply_markup=admin_kb(await voting_open()),
+        )
  
  
 @router.message(Command("stats"))
@@ -275,6 +451,7 @@ def build_docx(row: dict, sig_bytes: bytes, submitted: datetime) -> bytes:
         ("Ta'lim muassasasi", row["institution"]),
         ("Tug'ilgan sana", datetime.strptime(row["birth_date"], "%Y-%m-%d").strftime("%d.%m.%Y")),
         ("Telefon raqam", row["phone"]),
+        ("Sardor bo'lolmasa, ovoz beradi", row.get("vote_for") or "—"),
     ]
     table = doc.add_table(rows=0, cols=2)
     table.style = "Table Grid"
@@ -343,6 +520,7 @@ def build_text(row: dict, submitted: datetime) -> str:
         f"Muassasa: {row['institution']}",
         f"Tug'ilgan sana: {row['birth_date']}",
         f"Telefon: {row['phone']}",
+        f"Sardor bo'lolmasa, ovoz beradi: {row.get('vote_for') or '-'}",
         "",
     ]
     for i, a in enumerate(row["answers"], 1):
@@ -357,7 +535,8 @@ async def notify_admin(bot: Bot, row: dict, sig_bytes: bytes) -> bool:
         f"👤 <b>{escape(row['full_name'])}</b>\n"
         f"🏫 {row['grade']}-sinf\n"
         f"🎯 {escape(row['direction'])}\n"
-        f"📞 {escape(row['phone'])}\n\n"
+        f"📞 {escape(row['phone'])}\n"
+        f"🗳 Ovoz beradi: {escape(row['vote_for']) if row.get('vote_for') else '—'}\n\n"
         f"📄 To'liq ariza (imzo bilan) faylda 👇"
     )
     safe = re.sub(r"\W+", "_", row["full_name"]).strip("_") or "ariza"
@@ -370,7 +549,9 @@ async def notify_admin(bot: Bot, row: dict, sig_bytes: bytes) -> bool:
             log.exception("Word fayl yaratib bo'lmadi, matn yuboriladi")
             data = build_text(row, submitted).encode("utf-8")
             fname = base + ".txt"
-        await bot.send_document(ADMIN_ID, BufferedInputFile(data, fname), caption=caption)
+        await bot.send_document(
+            ADMIN_ID, BufferedInputFile(data, fname), caption=caption, reply_markup=admin_kb(await voting_open())
+        )
         return True
     except Exception:
         log.exception("Adminga yuborib bo'lmadi. Admin botga /start bosganmi? ADMIN_ID to'g'rimi?")
@@ -403,6 +584,14 @@ async def api_submit(request: web.Request):
     name = check_name(d.get("fullName", ""))
     if not name:
         return bad("Familiya va ismni to'liq yozing, qisqartirish yoki faqat ism yozish taqiqlanadi.")
+ 
+    vote_for = None
+    if await voting_open():
+        vote_for = check_name(d.get("voteFor", ""))
+        if not vote_for:
+            return bad("Kimga ovoz berishingizni to'liq familiya va ism bilan yozing (masalan: Qazaqbayev Jamshid).")
+        if name_key(vote_for) == name_key(name):
+            return bad("O'zingizga ovoz bera olmaysiz. Boshqa nomzodni yozing.")
  
     dir_id = d.get("direction")
     if dir_id not in DIRECTIONS:
@@ -465,6 +654,7 @@ async def api_submit(request: web.Request):
         "birth_date": birth.strftime("%Y-%m-%d"),
         "phone": phone,
         "answers": answers,
+        "vote_for": vote_for,
         "signature": sig,
         "agreed": True,
     }
@@ -502,6 +692,10 @@ async def api_submit(request: web.Request):
     return web.json_response({"ok": True, "admin_notified": admin_ok})
  
  
+async def api_status(request: web.Request):
+    return web.json_response({"voting": await voting_open()}, headers={"Cache-Control": "no-store"})
+ 
+ 
 async def index(request: web.Request):
     return web.FileResponse(
         Path(__file__).with_name("index.html"), headers={"Cache-Control": "no-store"}
@@ -522,6 +716,7 @@ async def main():
     app["bot"] = bot
     app.router.add_get("/", index)
     app.router.add_get("/health", health)
+    app.router.add_get("/api/status", api_status)
     app.router.add_post("/api/submit", api_submit)
  
     runner = web.AppRunner(app)
@@ -538,7 +733,7 @@ async def main():
         except Exception:
             log.exception("Menyu tugmasini o'rnatib bo'lmadi")
  
-    await dp.start_polling(bot, allowed_updates=["message"])
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
  
  
 if __name__ == "__main__":

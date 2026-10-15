@@ -113,7 +113,7 @@ const haptic = (type) => {
 };
  
 /* ------------------------------------------------------------ Ma'lumot */
-const DRAFT_KEY = "saylov_draft_v2";
+const DRAFT_KEY = "saylov_draft_v3";
  
 const GENERAL = [
   "O‘zingizni qisqacha tanishtiring.",
@@ -125,8 +125,7 @@ const GENERAL = [
   "Tengdoshlaringiz sizning fikringizga qo‘shilmasa, qanday yo‘l tutasiz?",
   "Jamoada kelishmovchilik yuzaga kelsa, uni qanday hal qilasiz?",
   "O‘qish va Kengash faoliyatini qanday muvozanatlashtirasiz?",
-  "Sizga ishonib topshirilgan vazifani bajara olmasangiz, nima qilasiz?",
-  "Agar siz sardor bo‘lolmasangiz, kimga ovoz berasiz?"
+  "Sizga ishonib topshirilgan vazifani bajara olmasangiz, nima qilasiz?"
 ];
  
 const DIRECTIONS = [
@@ -192,10 +191,13 @@ const state = {
   phone: "",           // faqat 9 ta raqam
   general: Array(GENERAL.length).fill(""),
   special: [],
+  voteFor: "",
   agree: false,
   signature: null,     // draftga saqlanmaydi
   done: false
 };
+ 
+let votingOpen = true;   // server /api/status orqali yangilanadi
  
 /* -------------------------------------------------------------- Yordamchi */
 const $ = (id) => document.getElementById(id);
@@ -255,12 +257,24 @@ function nameCheck(raw) {
   return { ok: true, msg: "✅ To‘g‘ri yozilgan", value: normalizeName(s) };
 }
  
+function nameKey(s) {
+  return s.toLowerCase().replace(/[‘’ʻʼ`´]/g, "'").split(/\s+/).filter(Boolean).sort().join(" ");
+}
+function voteCheck(raw) {
+  const r = nameCheck(raw);
+  if (r.ok && nameKey(r.value) === nameKey(state.fullName))
+    return { ok: false, msg: "❌ O‘zingizga ovoz bera olmaysiz. Boshqa nomzodni yozing." };
+  if (!r.ok && r.msg) r.msg = r.msg.replace("Ism-familiyani", "Familiya va ismni");
+  return r;
+}
+ 
 /* ------------------------------------------------------------ Qadamlar */
 function buildSteps() {
   const list = [{ t: "welcome" }, { t: "class" }, { t: "name" }, { t: "direction" }, { t: "details" }];
   GENERAL.forEach((q, i) => list.push({ t: "q", kind: "general", i, q }));
   const d = dirById(state.direction);
   if (d) d.questions.forEach((q, i) => list.push({ t: "q", kind: "special", i, q }));
+  if (votingOpen) list.push({ t: "vote" });
   list.push({ t: "final" });
   return list;
 }
@@ -291,6 +305,10 @@ function validate(st) {
     }
     case "q":
       return getAns(st).trim().length >= 10 ? null : "Kamida 10 ta belgidan iborat javob yozing.";
+    case "vote": {
+      const r = voteCheck(state.voteFor);
+      return r.ok ? null : (r.msg || "Kimga ovoz berishingizni yozing.");
+    }
     case "final":
       if (!state.agree) return "Majburiyatlar bilan tanishganingizni tasdiqlovchi belgini qo‘ying.";
       if (!state.signature) return "Imzo qo‘ying: maydonga barmog‘ingiz bilan chizing.";
@@ -318,6 +336,7 @@ function go(d) {
     const err = validate(cur());
     if (err) { showErr(err); return; }
     if (cur().t === "name") state.fullName = nameCheck(state.fullName).value;
+    if (cur().t === "vote") state.voteFor = voteCheck(state.voteFor).value;
   }
   steps = buildSteps();
   state.step = Math.max(0, Math.min(steps.length - 1, state.step + d));
@@ -468,6 +487,28 @@ R.q = (st) => {
   upd();
 };
  
+R.vote = () => {
+  view.innerHTML =
+    '<span class="tag">Ovoz berish</span>' +
+    '<h2>Agar siz sardor bo‘lolmasangiz, kimga ovoz berasiz?</h2>' +
+    '<p class="hint">Nomzodning familiya va ismini to‘liq yozing. Masalan: <b>Qazaqbayev Jamshid</b><br>' +
+    'Qisqartirib yoki faqat ism yozish taqiqlanadi. O‘zingizga ovoz berib bo‘lmaydi.</p>' +
+    '<input id="vt" type="text" autocomplete="off" autocapitalize="words" placeholder="Familiya Ism">' +
+    '<div class="status" id="vtS"></div>';
+  const inp = $("vt");
+  inp.value = state.voteFor;
+  const upd = () => {
+    state.voteFor = inp.value;
+    const r = voteCheck(inp.value);
+    const s = $("vtS");
+    s.textContent = r.msg;
+    s.className = "status " + (r.msg ? (r.ok ? "ok" : "no") : "");
+  };
+  inp.addEventListener("input", () => { hideErr(); upd(); save(); });
+  upd();
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") onNext(); });
+};
+ 
 R.final = () => {
   const d = dirById(state.direction);
   const today = new Date();
@@ -589,6 +630,7 @@ async function submit() {
       phone: "+998" + state.phone,
       general: GENERAL.map((q, i) => ({ q, a: state.general[i].trim() })),
       special: d ? d.questions.map((q, i) => ({ q, a: (state.special[i] || "").trim() })) : [],
+      voteFor: votingOpen ? state.voteFor : "",
       agree: state.agree,
       signature: state.signature
     }
@@ -621,6 +663,17 @@ $("btnBack").onclick = () => go(-1);
 $("btnNext").onclick = onNext;
 load();
 render();
+try {
+  fetch("/api/status", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((j) => {
+      if (j && typeof j.voting === "boolean") {
+        votingOpen = j.voting;
+        if (state.step === 0) render();
+      }
+    })
+    .catch(() => {});
+} catch (e) {}
 })();
 </script>
 </body>
